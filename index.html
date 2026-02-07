@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>لعبة الحظ 🎰</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',Tahoma,sans-serif}
+        body{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;padding-bottom:80px}
+        .container{max-width:500px;margin:0 auto;padding:20px}
+        .header{background:white;border-radius:20px;padding:20px;margin-bottom:20px;box-shadow:0 4px 15px rgba(0,0,0,0.1);text-align:center}
+        .user-info{display:flex;align-items:center;justify-content:center;gap:15px;margin-bottom:15px}
+        .user-avatar{width:60px;height:60px;border-radius:50%;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-size:24px;color:#667eea}
+        .user-name{font-size:18px;font-weight:bold;color:#333}
+        .stats{display:flex;justify-content:space-around;margin-top:15px;padding:10px;background:#f8f9fa;border-radius:10px}
+        .stat-item{text-align:center}
+        .stat-value{font-size:20px;font-weight:bold;color:#667eea}
+        .stat-label{font-size:12px;color:#666}
+        .game-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:30px}
+        .grid-item{aspect-ratio:1;background:rgba(255,255,255,0.9);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:bold;color:#333;box-shadow:0 2px 8px rgba(0,0,0,0.1);transition:all 0.3s ease}
+        .grid-item.active{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;transform:scale(1.1);box-shadow:0 4px 20px rgba(102,126,234,0.5)}
+        .play-button{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);width:90%;max-width:400px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border:none;padding:20px;border-radius:50px;font-size:18px;font-weight:bold;cursor:pointer;box-shadow:0 6px 20px rgba(102,126,234,0.4);transition:all 0.3s ease}
+        .play-button:hover{transform:translateX(-50%) scale(1.05);box-shadow:0 8px 25px rgba(102,126,234,0.6)}
+        .result-modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:1000;opacity:0;pointer-events:none;transition:opacity 0.3s ease}
+        .result-modal.show{opacity:1;pointer-events:all}
+        .result-content{background:white;border-radius:20px;padding:30px;text-align:center;max-width:350px;width:90%;animation:modalSlideUp 0.5s ease}
+        @keyframes modalSlideUp{from{transform:translateY(50px);opacity:0}to{transform:translateY(0);opacity:1}}
+        .result-number{font-size:80px;font-weight:bold;margin:20px 0}
+        .result-rare{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+        .result-normal{color:#667eea}
+        .result-title{font-size:24px;font-weight:bold;margin-bottom:10px}
+        .result-reward{font-size:18px;color:#666;margin:10px 0}
+        .close-modal{background:#667eea;color:white;border:none;padding:12px 30px;border-radius:25px;font-size:16px;font-weight:bold;cursor:pointer;margin-top:20px;transition:all 0.3s ease}
+        .close-modal:hover{background:#764ba2}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="user-info">
+                <div class="user-avatar" id="userAvatar">👤</div>
+                <div>
+                    <div class="user-name" id="userName">مستخدم</div>
+                    <div id="userUsername" style="color:#666;font-size:14px">@username</div>
+                </div>
+            </div>
+            <div class="stats">
+                <div class="stat-item">
+                    <div class="stat-value" id="gamesAvailable">5</div>
+                    <div class="stat-label">ألعاب</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="balance">0</div>
+                    <div class="stat-label">رصيد</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="rareWins">0</div>
+                    <div class="stat-label">نادر</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="game-grid" id="gameGrid"></div>
+    </div>
+    
+    <button class="play-button" id="playButton" onclick="startGame()">ابدأ اللعب 🎰</button>
+    
+    <div class="result-modal" id="resultModal">
+        <div class="result-content">
+            <div class="result-title" id="resultTitle">تهانينا!</div>
+            <div class="result-number" id="resultNumber"></div>
+            <div class="result-reward" id="resultReward"></div>
+            <button class="close-modal" onclick="closeModal()">حسناً</button>
+        </div>
+    </div>
+
+    <script>
+        let tg = window.Telegram?.WebApp;
+        let userData = tg?.initDataUnsafe?.user || {};
+        
+        if (tg) {
+            tg.ready();
+            tg.expand();
+            document.getElementById('userName').textContent = userData.first_name || 'مستخدم';
+            document.getElementById('userUsername').textContent = userData.username ? '@' + userData.username : '';
+        }
+        
+        function generateGrid() {
+            const grid = document.getElementById('gameGrid');
+            grid.innerHTML = '';
+            for (let i = 0; i < 25; i++) {
+                const num = Math.floor(Math.random() * 20) + 1;
+                const item = document.createElement('div');
+                item.className = 'grid-item';
+                item.textContent = num;
+                grid.appendChild(item);
+            }
+        }
+        
+        function startGame() {
+            const btn = document.getElementById('playButton');
+            btn.disabled = true;
+            btn.textContent = 'جاري اللعب...';
+            
+            const items = document.querySelectorAll('.grid-item');
+            let idx = 0;
+            const total = 30;
+            
+            const int = setInterval(() => {
+                items.forEach(i => i.classList.remove('active'));
+                items[Math.floor(Math.random() * items.length)].classList.add('active');
+                idx++;
+                if (idx >= total) {
+                    clearInterval(int);
+                    
+                    // Generate random result
+                    const number = Math.floor(Math.random() * 20) + 1;
+                    const winType = number > 15 ? 'rare' : 'normal';
+                    const reward = winType === 'rare' ? number * 10 : number * 2;
+                    
+                    showResult({number, win_type: winType, reward});
+                    
+                    btn.disabled = false;
+                    btn.textContent = 'ابدأ اللعب 🎰';
+                }
+            }, 100);
+            
+            generateGrid();
+        }
+        
+        function showResult(r) {
+            const m = document.getElementById('resultModal');
+            const num = document.getElementById('resultNumber');
+            const title = document.getElementById('resultTitle');
+            const reward = document.getElementById('resultReward');
+            
+            num.textContent = r.number;
+            reward.textContent = r.reward > 0 ? `+${r.reward} ج` : '';
+            
+            if (r.win_type === 'rare') {
+                num.className = 'result-number result-rare';
+                title.textContent = '🎉 فوز نادر!';
+            } else {
+                num.className = 'result-number result-normal';
+                title.textContent = '🎊 فوز!';
+            }
+            
+            m.classList.add('show');
+        }
+        
+        function closeModal() {
+            document.getElementById('resultModal').classList.remove('show');
+        }
+        
+        // Initialize grid
+        generateGrid();
+    </script>
+</body>
+</html>
